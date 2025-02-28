@@ -1822,7 +1822,8 @@ void AsmPrinter::emitFunctionBody() {
     // Print a label for the basic block.
     emitBasicBlockStart(MBB);
     DenseMap<StringRef, unsigned> MnemonicCounts;
-    for (auto &MI : MBB) {
+
+    for (auto &MI : MBB.instrs()) {
       // Print the assembly for the instruction.
       if (!MI.isPosition() && !MI.isImplicitDef() && !MI.isKill() &&
           !MI.isDebugInstr()) {
@@ -1830,8 +1831,8 @@ void AsmPrinter::emitFunctionBody() {
       }
 
       // If there is a pre-instruction symbol, emit a label for it here.
-      if (MCSymbol *S = MI.getPreInstrSymbol())
-        OutStreamer->emitLabel(S);
+      // if (MCSymbol *S = MI.getPreInstrSymbol())
+      //   OutStreamer->emitLabel(S);
 
       if (MDNode *MD = MI.getPCSections())
         emitPCSectionsLabel(*MF, *MD);

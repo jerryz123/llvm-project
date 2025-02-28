@@ -37,6 +37,7 @@
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbol.h"
+#include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/RISCVISAInfo.h"
@@ -60,7 +61,7 @@ class RISCVAsmPrinter : public AsmPrinter {
 public:
   explicit RISCVAsmPrinter(TargetMachine &TM,
                            std::unique_ptr<MCStreamer> Streamer)
-      : AsmPrinter(TM, std::move(Streamer)) {}
+      : AsmPrinter(TM, std::move(Streamer)), slotIndex(0) {}
 
   StringRef getPassName() const override { return "RISC-V Assembly Printer"; }
 
@@ -74,6 +75,8 @@ public:
                        const MachineInstr &MI);
 
   bool runOnMachineFunction(MachineFunction &MF) override;
+
+  bool emitBundleHeader(const MachineInstr *MI, int size);
 
   void emitInstruction(const MachineInstr *MI) override;
 
@@ -107,6 +110,8 @@ public:
 
   void emitFunctionEntryLabel() override;
   bool emitDirectiveOptionArch();
+
+  unsigned slotIndex;
 
 private:
   void emitAttributes(const MCSubtargetInfo &SubtargetInfo);
@@ -297,7 +302,150 @@ void RISCVAsmPrinter::emitNTLHint(const MachineInstr *MI) {
   EmitToStreamer(*OutStreamer, Hint);
 }
 
+bool RISCVAsmPrinter::emitBundleHeader(const MachineInstr *MI, int size) {
+  assert(size >= 1 && size < 4);
+  errs() << "Emitting bundle header " << size << " " << *MI;
+  MCInst MCI, HI;
+  if (lowerToMCInst(MI, MCI)) assert(false);
+
+  errs() << "Emitting MCInst " << MCI;
+
+  const MCInstrInfo *MII = TM.getMCInstrInfo();
+  std::unique_ptr<MCCodeEmitter> CodeEmitter(createRISCVMCCodeEmitter(*MII, OutContext));
+  const MCSubtargetInfo *STI = TM.getMCSubtargetInfo();
+  SmallVector<char, 4> CB;
+  SmallVector<MCFixup> Fixups;
+  CodeEmitter->encodeInstruction(MCI, CB, Fixups, *STI);
+  uint32_t Encoding = support::endian::read32le(CB.data());
+
+  uint32_t OpcodeNew;
+  switch (MI->getOpcode()) {
+  case RISCV::ADDI:
+  case RISCV::SLTI:
+  case RISCV::SLTIU:
+  case RISCV::XORI:
+  case RISCV::ORI:
+  case RISCV::ANDI:
+  case RISCV::SLLI:
+  case RISCV::SRLI:
+  case RISCV::SRAI:
+    switch (size) {
+    case 1: OpcodeNew = 0b00111; break;
+    case 2: OpcodeNew = 0b01111; break;
+    case 3: OpcodeNew = 0b10111; break;
+    }
+    break;
+  case RISCV::ADD:
+  case RISCV::SUB:
+  case RISCV::SLL:
+  case RISCV::SLT:
+  case RISCV::SLTU:
+  case RISCV::XOR:
+  case RISCV::SRL:
+  case RISCV::SRA:
+  case RISCV::OR:
+  case RISCV::AND:
+  case RISCV::MUL:
+  case RISCV::MULH:
+  case RISCV::MULHSU:
+  case RISCV::MULHU:
+  case RISCV::DIV:
+  case RISCV::DIVU:
+  case RISCV::REM:
+  case RISCV::REMU:
+    switch (size) {
+    case 1: OpcodeNew = 0b00010; break;
+    case 2: OpcodeNew = 0b01010; break;
+    case 3: OpcodeNew = 0b10110; break;
+    }
+    break;
+  case RISCV::LB:
+  case RISCV::LBU:
+  case RISCV::LH:
+  case RISCV::LHU:
+  case RISCV::LW:
+  case RISCV::LWU:
+  case RISCV::LD:
+    switch (size) {
+    case 1: OpcodeNew = 0b11010; break;
+    case 2: OpcodeNew = 0b11110; break;
+    case 3: OpcodeNew = 0b11111; break;
+    }
+    break;
+  default:
+    assert(false);
+  }
+
+  Encoding = ((Encoding >> 7) << 7) | (OpcodeNew << 2) | 0b11;
+
+  OutStreamer->emitValue(MCConstantExpr::create(Encoding, OutContext), 4);
+
+  return true;
+}
+
 void RISCVAsmPrinter::emitInstruction(const MachineInstr *MI) {
+  bool bundleHead = !MI->isInsideBundle() && MI->isBundled();
+  bool inBundle = MI->isInsideBundle();
+  size_t bundleSize = 0;
+
+  if (bundleHead) {
+    auto IIT = MI->getIterator();
+    IIT++;
+    const MachineBasicBlock *MBB = MI->getParent();
+    while (IIT != MBB->instr_end() && IIT->isBundledWithPred()) {
+      IIT++;
+      bundleSize++;
+    }
+  }
+
+  int slotWidth = 1;
+  if (STI->hasFeature(RISCV::FeatureStdExtXRVLIWFixed)) {
+    if (STI->hasFeature(RISCV::FeatureStdExtXRVLIWQ)) {
+      slotWidth = 4;
+    } else if (STI->hasFeature(RISCV::FeatureStdExtXRVLIWD)) {
+      slotWidth = 2;
+    } else {
+      assert(false);
+    }
+  } else if (STI->hasFeature(RISCV::FeatureStdExtXQSlot)) {
+    slotWidth = 4;
+  }
+
+  unsigned opcode = MI->getOpcode();
+  bool tailJAL = slotWidth > 1 &&
+    (opcode == RISCV::JAL || opcode == RISCV::JALR || opcode == RISCV::PseudoCALL);
+
+  if (slotWidth > 1 && !inBundle && !tailJAL) {
+    OutStreamer->emitCodeAlignment(Align(slotWidth*4), &getSubtargetInfo());
+  }
+
+  if (!inBundle && !tailJAL) {
+    slotIndex = 0;
+  }
+
+  if (slotWidth > 1) {
+    if (tailJAL) {
+      while (slotIndex != slotWidth - 1) {
+        emitNops(1);
+        slotIndex++;
+      }
+    }
+  }
+
+  if (MCSymbol *S = MI->getPreInstrSymbol()) {
+    OutStreamer->emitLabel(S);
+  }
+
+  if (bundleHead) {
+    if (!emitBundleHeader(MI, bundleSize)) {
+      assert(false);
+    } else {
+      return;
+    }
+  }
+
+  slotIndex++;
+
   RISCV_MC::verifyInstructionPredicates(MI->getOpcode(),
                                         getSubtargetInfo().getFeatureBits());
 
