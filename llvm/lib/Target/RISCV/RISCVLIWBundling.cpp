@@ -76,9 +76,9 @@ public:
     void emitBundle() {
         currentBundleWrites.clear();
         if (currentBundle.size() == 1) {
-            errs() << "  Inst: " << *currentBundle[0];
+            //errs() << "  Inst: " << *currentBundle[0];
         } else if (currentBundle.size() > 1) {
-            errs() << "  Detected bundle:\n";
+            //errs() << "  Detected bundle:\n";
 
             bool legal = legalHead(currentBundle[0]);
 
@@ -101,9 +101,9 @@ public:
                 }
             }
 
-            errs() << "    Head : " << *currentBundle[0];
+            //errs() << "    Head : " << *currentBundle[0];
             for (size_t i = 1; i < currentBundle.size(); i++) {
-                errs() << "    Tail : " << *currentBundle[i];
+                //errs() << "    Tail : " << *currentBundle[i];
                 currentBundle[i]->bundleWithPred();
             }
         }
@@ -120,7 +120,7 @@ public:
 
     bool runOnMachineBasicBlock(MachineBasicBlock &BB, const TargetInstrInfo* TII) {
         // Process each instruction in the basic block
-        errs() << "BasicBlock: " << BB.getName() << "\n";
+        //errs() << "BasicBlock: " << BB.getName() << "\n";
 
         for (MachineInstr &MI : BB) {
             MCInstrDesc D = MI.getDesc();
@@ -151,7 +151,7 @@ public:
         emitBundle();
 
         for (MachineInstr &MI : BB.instrs()) {
-            errs() << "After bundling: " << MI;
+            //errs() << "After bundling: " << MI;
         }
         return false;
     }

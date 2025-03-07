@@ -304,11 +304,8 @@ void RISCVAsmPrinter::emitNTLHint(const MachineInstr *MI) {
 
 bool RISCVAsmPrinter::emitBundleHeader(const MachineInstr *MI, int size) {
   assert(size >= 1 && size < 4);
-  errs() << "Emitting bundle header " << size << " " << *MI;
   MCInst MCI, HI;
   if (lowerToMCInst(MI, MCI)) assert(false);
-
-  errs() << "Emitting MCInst " << MCI;
 
   const MCInstrInfo *MII = TM.getMCInstrInfo();
   std::unique_ptr<MCCodeEmitter> CodeEmitter(createRISCVMCCodeEmitter(*MII, OutContext));
@@ -398,6 +395,7 @@ void RISCVAsmPrinter::emitInstruction(const MachineInstr *MI) {
     }
   }
 
+  bool encodeBundleHead = bundleHead;
   int slotWidth = 1;
   if (STI->hasFeature(RISCV::FeatureStdExtXRVLIWFixed)) {
     if (STI->hasFeature(RISCV::FeatureStdExtXRVLIWQ)) {
@@ -407,8 +405,10 @@ void RISCVAsmPrinter::emitInstruction(const MachineInstr *MI) {
     } else {
       assert(false);
     }
+    encodeBundleHead = false;
   } else if (STI->hasFeature(RISCV::FeatureStdExtXQSlot)) {
     slotWidth = 4;
+    encodeBundleHead = false;
   }
 
   unsigned opcode = MI->getOpcode();
@@ -436,7 +436,7 @@ void RISCVAsmPrinter::emitInstruction(const MachineInstr *MI) {
     OutStreamer->emitLabel(S);
   }
 
-  if (bundleHead) {
+  if (encodeBundleHead) {
     if (!emitBundleHeader(MI, bundleSize)) {
       assert(false);
     } else {
@@ -444,7 +444,7 @@ void RISCVAsmPrinter::emitInstruction(const MachineInstr *MI) {
     }
   }
 
-  slotIndex++;
+  slotIndex = (slotIndex + 1) % slotWidth;
 
   RISCV_MC::verifyInstructionPredicates(MI->getOpcode(),
                                         getSubtargetInfo().getFeatureBits());
