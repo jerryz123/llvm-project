@@ -118,41 +118,34 @@ public:
         }
     }
 
-    bool runOnMachineBasicBlock(MachineBasicBlock &BB, const TargetInstrInfo* TII) {
-        // Process each instruction in the basic block
-        //errs() << "BasicBlock: " << BB.getName() << "\n";
-
+    bool runOnMachineBasicBlock(MachineBasicBlock &BB, const TargetInstrInfo* TII) {=
         for (MachineInstr &MI : BB) {
             MCInstrDesc D = MI.getDesc();
             if (D.isBranch() || D.isCall()) {
                 addToCurrentBundle(&MI);
                 emitBundle();
             } else {
-                bool hasRAW = false;
-		unsigned opcode = MI.getOpcode();
-		// bool mustBeInOwnBundle = opcode == RISCV::JAL || opcode == RISCV::JALR || opcode == RISCV::PseudoCALL;
+                bool hasRAWorWAW = false;
+
 		for (const auto &O : MI.operands()) {
                     if (O.isReg()) {
                         for (MachineOperand *PO : currentBundleWrites) {
                             if (O.getReg() == PO->getReg()) {
-                                hasRAW = true;
+                                hasRAWorWAW = true;
                             }
                         }
                     }
 
                 }
 
-                if (hasRAW) emitBundle();
+                if (hasRAWorWAW) emitBundle();
                 addToCurrentBundle(&MI);
                 if (currentBundle.size() >= maxBundleSize ) emitBundle();
             }
         }
+
         // Handle the last remaining bundle if any
         emitBundle();
-
-        for (MachineInstr &MI : BB.instrs()) {
-            //errs() << "After bundling: " << MI;
-        }
         return false;
     }
 
