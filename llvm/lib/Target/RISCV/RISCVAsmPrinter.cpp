@@ -316,61 +316,31 @@ bool RISCVAsmPrinter::emitBundleHeader(const MachineInstr *MI, int size) {
   uint32_t Encoding = support::endian::read32le(CB.data());
 
   uint32_t OpcodeNew;
-  switch (MI->getOpcode()) {
-  case RISCV::ADDI:
-  case RISCV::SLTI:
-  case RISCV::SLTIU:
-  case RISCV::XORI:
-  case RISCV::ORI:
-  case RISCV::ANDI:
-  case RISCV::SLLI:
-  case RISCV::SRLI:
-  case RISCV::SRAI:
-    switch (size) {
-    case 1: OpcodeNew = 0b00111; break;
-    case 2: OpcodeNew = 0b01111; break;
-    case 3: OpcodeNew = 0b10111; break;
-    }
-    break;
-  case RISCV::ADD:
-  case RISCV::SUB:
-  case RISCV::SLL:
-  case RISCV::SLT:
-  case RISCV::SLTU:
-  case RISCV::XOR:
-  case RISCV::SRL:
-  case RISCV::SRA:
-  case RISCV::OR:
-  case RISCV::AND:
-  case RISCV::MUL:
-  case RISCV::MULH:
-  case RISCV::MULHSU:
-  case RISCV::MULHU:
-  case RISCV::DIV:
-  case RISCV::DIVU:
-  case RISCV::REM:
-  case RISCV::REMU:
-    switch (size) {
-    case 1: OpcodeNew = 0b00010; break;
-    case 2: OpcodeNew = 0b01010; break;
-    case 3: OpcodeNew = 0b10110; break;
-    }
-    break;
-  case RISCV::LB:
-  case RISCV::LBU:
-  case RISCV::LH:
-  case RISCV::LHU:
-  case RISCV::LW:
-  case RISCV::LWU:
-  case RISCV::LD:
-    switch (size) {
-    case 1: OpcodeNew = 0b11010; break;
-    case 2: OpcodeNew = 0b11110; break;
-    case 3: OpcodeNew = 0b11111; break;
-    }
-    break;
+  switch (RISCV::getRVOpcode(MI)) {
+  case RISCV::RVOPC::OPCLOAD:
+      switch (size) {
+      case 1: OpcodeNew = 0b11010; break;
+      case 2: OpcodeNew = 0b11110; break;
+      case 3: OpcodeNew = 0b11111; break;
+      }
+      break;
+  case RISCV::RVOPC::OPCOPIMM:
+      switch (size) {
+      case 1: OpcodeNew = 0b00111; break;
+      case 2: OpcodeNew = 0b01111; break;
+      case 3: OpcodeNew = 0b10111; break;
+      }
+      break;
+  case RISCV::RVOPC::OPCOP:
+      switch (size) {
+      case 1: OpcodeNew = 0b00010; break;
+      case 2: OpcodeNew = 0b01010; break;
+      case 3: OpcodeNew = 0b10110; break;
+      }
+      break;
   default:
-    assert(false);
+      errs() << *MI;
+      MI->emitGenericError("Illegal insn for RVLIW bundleHead");
   }
 
   Encoding = ((Encoding >> 7) << 7) | (OpcodeNew << 2) | 0b11;

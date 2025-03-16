@@ -4323,3 +4323,150 @@ RISCVInstrInfo::analyzeLoopForPipelining(MachineBasicBlock *LoopBB) const {
 
   return std::make_unique<RISCVPipelinerLoopInfo>(LHS, RHS, Cond);
 }
+
+RISCV::RVOPC RISCV::getRVOpcode(const MachineInstr* MI) {
+    switch (MI->getOpcode()) {
+    case RISCV::LB:
+    case RISCV::LBU:
+    case RISCV::LH:
+    case RISCV::LHU:
+    case RISCV::LW:
+    case RISCV::LWU:
+    case RISCV::LD:
+        return RVOPC::OPCLOAD;
+    case RISCV::SB:
+    case RISCV::SH:
+    case RISCV::SW:
+    case RISCV::SD:
+        return RVOPC::OPCSTORE;
+    case RISCV::BEQ:
+    case RISCV::BGE:
+    case RISCV::BGEU:
+    case RISCV::BLT:
+    case RISCV::BLTU:
+    case RISCV::BNE:
+        return RVOPC::OPCBRANCH;
+    case RISCV::JALR:
+    case RISCV::PseudoRET: // expands to JALR
+        return RVOPC::OPCJALR;
+    case RISCV::FENCE:
+    case RISCV::FENCE_I:
+        return RVOPC::OPCMISCMEM;
+    case RISCV::PseudoCALL: // ?? relying on linker relaxation to not generate a AUIPC + JALR
+    case RISCV::PseudoBR: // this should always become a JAL
+    case RISCV::JAL:
+        return RVOPC::OPCJAL;
+    case RISCV::ADDI:
+    case RISCV::ANDI:
+    case RISCV::BCLRI:
+    case RISCV::BEXTI:
+    case RISCV::BINVI:
+    case RISCV::BREV8:
+    case RISCV::BSETI:
+    case RISCV::CLZ:
+    case RISCV::CPOP:
+    case RISCV::CTZ:
+    case RISCV::ORC_B:
+    case RISCV::ORI:
+    case RISCV::REV8_RV64:
+    case RISCV::RORI:
+    case RISCV::SEXT_B:
+    case RISCV::SEXT_H:
+    case RISCV::SLLI:
+    case RISCV::SLTI:
+    case RISCV::SLTIU:
+    case RISCV::SRAI:
+    case RISCV::SRLI:
+    case RISCV::XORI:
+        return RVOPC::OPCOPIMM;
+    case RISCV::ADD:
+    case RISCV::AND:
+    case RISCV::ANDN:
+    case RISCV::BCLR:
+    case RISCV::BEXT:
+    case RISCV::BINV:
+    case RISCV::BSET:
+    case RISCV::MAX:
+    case RISCV::MAXU:
+    case RISCV::MIN:
+    case RISCV::MINU:
+    case RISCV::OR:
+    case RISCV::ORN:
+    case RISCV::ROL:
+    case RISCV::ROR:
+    case RISCV::SH1ADD:
+    case RISCV::SH2ADD:
+    case RISCV::SH3ADD:
+    case RISCV::SLL:
+    case RISCV::SLT:
+    case RISCV::SLTU:
+    case RISCV::SRA:
+    case RISCV::SRL:
+    case RISCV::SUB:
+    case RISCV::XNOR:
+    case RISCV::XOR:
+        return RVOPC::OPCOP;
+    case RISCV::DIV:
+    case RISCV::DIVU:
+    case RISCV::REM:
+    case RISCV::REMU:
+        return RVOPC::OPCOPDIV;
+    case RISCV::MUL:
+    case RISCV::MULH:
+    case RISCV::MULHU:
+    case RISCV::MULHSU:
+        return RVOPC::OPCOPMUL;
+    case RISCV::CSRRC:
+    case RISCV::CSRRW:
+    case RISCV::CSRRS:
+    case RISCV::CSRRCI:
+    case RISCV::CSRRWI:
+    case RISCV::CSRRSI:
+    case RISCV::ECALL:
+    case RISCV::EBREAK:
+    case RISCV::MRET:
+    case RISCV::WFI:
+        return RVOPC::OPCSYSTEM;
+    case RISCV::AUIPC:
+        return RVOPC::OPCAUIPC;
+    case RISCV::LUI:
+        return RVOPC::OPCLUI;
+    case RISCV::ADDIW:
+    case RISCV::CLZW:
+    case RISCV::CPOPW:
+    case RISCV::CTZW:
+    case RISCV::RORIW:
+    case RISCV::SLLI_UW:
+    case RISCV::SLLIW:
+    case RISCV::SRAIW:
+    case RISCV::SRLIW:
+        return RVOPC::OPCOPIMM32;
+    case RISCV::ADD_UW:
+    case RISCV::ADDW:
+    case RISCV::ROLW:
+    case RISCV::RORW:
+    case RISCV::SH1ADD_UW:
+    case RISCV::SH2ADD_UW:
+    case RISCV::SH3ADD_UW:
+    case RISCV::SLLW:
+    case RISCV::SRAW:
+    case RISCV::SRLW:
+    case RISCV::SUBW:
+    case RISCV::ZEXT_H_RV64:
+        return RVOPC::OPCOP32;
+    case RISCV::DIVUW:
+    case RISCV::DIVW:
+    case RISCV::REMUW:
+    case RISCV::REMW:
+        return RVOPC::OPCOP32DIV;
+    case RISCV::MULW:
+        return RVOPC::OPCOP32MUL;
+    default:
+        const MachineBasicBlock *MBB = MI->getParent();
+        errs() << "Illegal insn for this mode in " << *MI;
+        errs() << "BasicBlock " << MBB->getName() << "\n";
+        MBB->getParent()->dump();
+        MI->emitGenericError("Illegal insn for RVLIW");
+        assert(false);
+    }
+}

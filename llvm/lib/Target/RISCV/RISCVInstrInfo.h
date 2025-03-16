@@ -391,6 +391,29 @@ struct RISCVMaskedPseudoInfo {
 };
 #define GET_RISCVMaskedPseudosTable_DECL
 #include "RISCVGenSearchableTables.inc"
+
+enum RVOPC {
+    OPCLOAD,
+    OPCSTORE,
+    OPCBRANCH,
+    OPCJALR,
+    OPCMISCMEM,
+    OPCJAL,
+    OPCOPIMM,
+    OPCOP,
+    OPCOPDIV,
+    OPCOPMUL,
+    OPCSYSTEM,
+    OPCAUIPC,
+    OPCLUI,
+    OPCOPIMM32,
+    OPCOP32,
+    OPCOP32DIV,
+    OPCOP32MUL,
+};
+
+RVOPC getRVOpcode(const MachineInstr* MI);
+
 } // end namespace RISCV
 
 } // end namespace llvm

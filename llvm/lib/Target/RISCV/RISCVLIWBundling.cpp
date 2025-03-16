@@ -10,6 +10,7 @@
 using namespace llvm;
 
 namespace {
+
 class RISCVLIWBundling : public MachineFunctionPass {
 public:
     static char ID;
@@ -30,43 +31,10 @@ public:
     }
 
     bool legalHead(const MachineInstr* MI) {
-        switch (MI->getOpcode()) {
-        case RISCV::LB:
-        case RISCV::LBU:
-        case RISCV::LH:
-        case RISCV::LHU:
-        case RISCV::LW:
-        case RISCV::LWU:
-        case RISCV::LD:
-
-        case RISCV::ADDI:
-        case RISCV::SLTI:
-        case RISCV::SLTIU:
-        case RISCV::XORI:
-        case RISCV::ORI:
-        case RISCV::ANDI:
-        case RISCV::SLLI:
-        case RISCV::SRLI:
-        case RISCV::SRAI:
-
-        case RISCV::ADD:
-        case RISCV::SUB:
-        case RISCV::SLL:
-        case RISCV::SLT:
-        case RISCV::SLTU:
-        case RISCV::XOR:
-        case RISCV::SRL:
-        case RISCV::SRA:
-        case RISCV::OR:
-        case RISCV::AND:
-        case RISCV::MUL:
-        case RISCV::MULH:
-        case RISCV::MULHSU:
-        case RISCV::MULHU:
-        case RISCV::DIV:
-        case RISCV::DIVU:
-        case RISCV::REM:
-        case RISCV::REMU:
+        switch (RISCV::getRVOpcode(MI)) {
+        case RISCV::OPCLOAD:
+        case RISCV::OPCOP:
+        case RISCV::OPCOPIMM:
             return true;
         default:
             return false;
@@ -118,15 +86,23 @@ public:
         }
     }
 
-    bool runOnMachineBasicBlock(MachineBasicBlock &BB, const TargetInstrInfo* TII) {=
-        for (MachineInstr &MI : BB) {
+    bool runOnMachineBasicBlock(MachineBasicBlock &MBB, const TargetInstrInfo* TII) {
+        // Remove CFI_INSTRUCTIONs (these are just used for generating debug info)
+        for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
+            MachineInstr &MI = *I++;
+            if (MI.isCFIInstruction()) {
+                MBB.erase(&MI);
+            }
+        }
+
+        for (MachineInstr &MI : MBB) {
             MCInstrDesc D = MI.getDesc();
             if (D.isBranch() || D.isCall()) {
                 addToCurrentBundle(&MI);
                 emitBundle();
             } else {
                 bool hasRAWorWAW = false;
-
+		unsigned opcode = MI.getOpcode();
 		for (const auto &O : MI.operands()) {
                     if (O.isReg()) {
                         for (MachineOperand *PO : currentBundleWrites) {
