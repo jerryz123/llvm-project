@@ -14,114 +14,188 @@ namespace {
 class RISCVLIWBundling : public MachineFunctionPass {
 public:
     static char ID;
-    RISCVLIWBundling(size_t maxBundleSize) : MachineFunctionPass(ID), maxBundleSize(maxBundleSize) {}
+    RISCVLIWBundling(size_t _maxBundleSize, bool _fixed) : MachineFunctionPass(ID), maxBundleSize(_maxBundleSize), fixed(_fixed) {
+        if (fixed) {
+            switch (maxBundleSize) {
+            case 2: {
+                slots.push_back({
+                        RISCV::OPCLOAD, RISCV::OPCSTORE, RISCV::OPCMISCMEM, RISCV::OPCOPDIV,
+                        RISCV::OPCOPMUL, RISCV::OPCSYSTEM, RISCV::OPCOP32DIV, RISCV::OPCOP32MUL,
+                        RISCV::OPCAUIPCJALR});
+                slots.push_back({RISCV::OPCBRANCH, RISCV::OPCJALR, RISCV::OPCJAL});
+                break;
+            }
+            case 4: {
+                slots.push_back({RISCV::OPCLOAD, RISCV::OPCSTORE, RISCV::OPCSYSTEM, RISCV::OPCMISCMEM});
+                slots.push_back({RISCV::OPCOPMUL, RISCV::OPCOP32MUL});
+                slots.push_back({RISCV::OPCOPDIV, RISCV::OPCOP32DIV, RISCV::OPCAUIPCJALR});
+                slots.push_back({RISCV::OPCBRANCH, RISCV::OPCJALR, RISCV::OPCJAL});
+                break;
+            }
+            default: {
+                assert(false);
+            }
+            }
+            // Any-slot instructions
+            for (std::set<RISCV::RVOPC> &slot : slots) {
+                slot.insert(RISCV::OPCOPIMM);
+                slot.insert(RISCV::OPCOP);
+                slot.insert(RISCV::OPCAUIPC);
+                slot.insert(RISCV::OPCLUI);
+                slot.insert(RISCV::OPCOPIMM32);
+                slot.insert(RISCV::OPCOP32);
+            }
+        } else {
+            // First slot is special
+            // The AUIPC+JALR pair will get expanded by the linker into two insns
+            slots.push_back({RISCV::OPCLOAD, RISCV::OPCOPIMM, RISCV::OPCOP, RISCV::OPCAUIPCJALR});
+            // other slots can be anything
+            for (size_t i = 1; i < maxBundleSize; i++) {
+                slots.push_back({RISCV::OPCLOAD, RISCV::OPCOPIMM, RISCV::OPCOP,
+                        RISCV::OPCSTORE, RISCV::OPCBRANCH, RISCV::OPCJALR, RISCV::OPCMISCMEM,
+                        RISCV::OPCJAL, RISCV::OPCOPDIV, RISCV::OPCOPMUL, RISCV::OPCSYSTEM,
+                        RISCV::OPCAUIPC, RISCV::OPCLUI,
+                        RISCV::OPCOPIMM32, RISCV::OPCOP32, RISCV::OPCOP32DIV, RISCV::OPCOP32MUL
+                    });
+            }
+        }
+    }
 
     size_t maxBundleSize;
+    bool fixed;
+
+    std::vector<std::set<RISCV::RVOPC>> slots;
     std::vector<MachineInstr*> currentBundle;
-    std::vector<MachineOperand*> currentBundleWrites;
+    //std::vector<MachineOperand*> currentBundleWrites;
+    std::vector<std::vector<MachineInstr*>> blockBundles;
 
-    void swapInsns(MachineInstr *A, MachineInstr *B) {
-        MachineBasicBlock *MBB = A->getParent();
-        auto NextB = B->getIterator();
-        NextB++;
-        MBB->remove(B);
-        MBB->insert(A->getIterator(), B);
-        MBB->remove(A);
-        MBB->insert(NextB, A);
-    }
+    bool addToCurrentBundle(MachineInstr *MI) {
+        RISCV::RVOPC opcode = RISCV::getRVOpcode(MI);
 
-    bool legalHead(const MachineInstr* MI) {
-        switch (RISCV::getRVOpcode(MI)) {
-        case RISCV::OPCLOAD:
-        case RISCV::OPCOP:
-        case RISCV::OPCOPIMM:
-            return true;
-        default:
-            return false;
-        }
-    }
-
-    void emitBundle() {
-        currentBundleWrites.clear();
-        if (currentBundle.size() == 1) {
-            //errs() << "  Inst: " << *currentBundle[0];
-        } else if (currentBundle.size() > 1) {
-            //errs() << "  Detected bundle:\n";
-
-            bool legal = legalHead(currentBundle[0]);
-
-            if (!legal) {
-                // try to swap head with a legal head
-                for (size_t i = 1; i < currentBundle.size(); i++) {
-                    if (legalHead(currentBundle[i])) {
-                        swapInsns(currentBundle[0], currentBundle[i]);
-                        MachineInstr* t = currentBundle[0];
-                        currentBundle[0] = currentBundle[i];
-                        currentBundle[i] = t;
-                        legal = true;
-                        break;
+        // Check for hazards
+        // PseudoCALL/TAIL operands 
+        for (const auto &O : MI->operands()) {
+            for (MachineInstr *PMI : currentBundle) {
+                if (PMI) {
+                    for (MachineOperand &PO : PMI->operands()) {
+                        if (O.isReg() && !O.isImplicit() && PO.isReg() && PO.isDef() && O.getReg() == PO.getReg()) {
+                            return false;
+                        }
                     }
                 }
-                // no valid instruction in bundle
-                if (!legal) {
-                    currentBundle.clear();
-                    return;
-                }
-            }
-
-            //errs() << "    Head : " << *currentBundle[0];
-            for (size_t i = 1; i < currentBundle.size(); i++) {
-                //errs() << "    Tail : " << *currentBundle[i];
-                currentBundle[i]->bundleWithPred();
             }
         }
-        currentBundle.clear();
+
+        // Special handling for PseudoCALL/TAIL, which gets expanded by the linker
+        if (opcode == RISCV::OPCAUIPCJALR) {
+            if (fixed) {
+                // PseudoCALL/TAIL gets expanded to AUIPC+JALR, so both slots must be clear
+                if (currentBundle[maxBundleSize-2] != nullptr || currentBundle[maxBundleSize-1] != nullptr) {
+                    return false;
+                }
+            } else {
+                // PseudoCALL/TAIL goes only in slot0, other slots must be clear
+                for (MachineInstr* I : currentBundle) if (I != nullptr) return false;
+            }
+        }
+
+
+        for (size_t i = 0; i < maxBundleSize; i++) {
+            if (currentBundle[i] == nullptr && slots[i].find(opcode) != slots[i].end()) {
+                currentBundle[i] = MI;
+                return true;
+            }
+        }
+        return false;
     }
 
-    void addToCurrentBundle(MachineInstr* I) {
-        currentBundle.push_back(I);
-        for (MachineOperand &O : I->operands()) {
-            if (O.isReg() && O.isDef())
-                currentBundleWrites.push_back(&O);
+    MachineInstr* generateNop(MachineFunction &MF) {
+        const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
+
+        MachineInstr* MI = BuildMI(MF, DebugLoc(), TII->get(RISCV::ADDI))
+                        .addReg(RISCV::X0, RegState::Define)  // Destination register
+                        .addReg(RISCV::X0, RegState::Kill)    // Source register (X0)
+                        .addImm(0);
+        return MI;
+    }
+
+    void legalizeAndEmitCurrentBundle(MachineFunction &MF) {
+        size_t bundleInsns = 0;
+        for (MachineInstr* MI : currentBundle) if (MI) bundleInsns++;
+        if (bundleInsns == 0) return;
+
+        if (!fixed) {
+            if (bundleInsns == 1) {
+                // Move the single instruction to the header slot
+                for (size_t i = 1; i < maxBundleSize; i++) {
+                    if (currentBundle[i]) {
+                        currentBundle[0] = currentBundle[i];
+                        currentBundle[i] = nullptr;
+                    }
+                }
+            } else if (bundleInsns > 1 && currentBundle[0] == nullptr) {
+                // Inject a nop bundle-header
+                currentBundle[0] = generateNop(MF);
+            }
+        } else {
+            for (size_t i = 0; i < maxBundleSize; i++) {
+                // Linker relaxation will fill 2 slots, don't generate the second nop
+                if (currentBundle[i] && RISCV::getRVOpcode(currentBundle[i]) == RISCV::OPCAUIPCJALR) break;
+                if (!currentBundle[i]) currentBundle[i] = generateNop(MF);
+            }
         }
+        blockBundles.push_back(currentBundle);
+        currentBundle = std::vector<MachineInstr*>(maxBundleSize, nullptr);
     }
 
     bool runOnMachineBasicBlock(MachineBasicBlock &MBB, const TargetInstrInfo* TII) {
-        // Remove CFI_INSTRUCTIONs (these are just used for generating debug info)
+        MachineFunction* MF = MBB.getParent();
+
+        // align the start of a bundle
+        // To work around odd linker-relaxation behavior (possibly buggy), we manually
+        // inject no-ops in assembly emission
+        if (fixed)
+            MBB.setAlignment(Align(maxBundleSize * 4));
+
         for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
             MachineInstr &MI = *I++;
+            // Remove CFI_INSTRUCTIONs (these are just used for generating debug info)
             if (MI.isCFIInstruction()) {
                 MBB.erase(&MI);
             }
         }
 
+        blockBundles.clear();
+        currentBundle = std::vector<MachineInstr*>(maxBundleSize, nullptr);
+
+        // Create sequence of bundles
         for (MachineInstr &MI : MBB) {
-            MCInstrDesc D = MI.getDesc();
-            if (D.isBranch() || D.isCall()) {
-                addToCurrentBundle(&MI);
-                emitBundle();
-            } else {
-                bool hasRAWorWAW = false;
-		unsigned opcode = MI.getOpcode();
-		for (const auto &O : MI.operands()) {
-                    if (O.isReg()) {
-                        for (MachineOperand *PO : currentBundleWrites) {
-                            if (O.getReg() == PO->getReg()) {
-                                hasRAWorWAW = true;
-                            }
-                        }
-                    }
+            if (!addToCurrentBundle(&MI)) {
+                legalizeAndEmitCurrentBundle(*MF);
+                assert(addToCurrentBundle(&MI));
+            }
 
+            // No younger instructions can be placed in the bundle with a PseudoCALL/TAIL
+            if (RISCV::getRVOpcode(&MI) == RISCV::OPCAUIPCJALR)
+                legalizeAndEmitCurrentBundle(*MF);
+        }
+        legalizeAndEmitCurrentBundle(*MF);
+
+        // Clear the basic block
+	for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
+            MachineInstr &MI = *I++;
+	    MBB.remove(&MI);
+	}
+
+        // Add bundled instructions to basicblock
+        for (std::vector<MachineInstr*> &bundle : blockBundles) {
+            for (size_t i = 0; i < maxBundleSize; i++) {
+                if (bundle[i]) {
+                    MBB.push_back(bundle[i]);
+                    if (i > 0) bundle[i]->bundleWithPred();
                 }
-
-                if (hasRAWorWAW) emitBundle();
-                addToCurrentBundle(&MI);
-                if (currentBundle.size() >= maxBundleSize ) emitBundle();
             }
         }
-
-        // Handle the last remaining bundle if any
-        emitBundle();
         return false;
     }
 
@@ -134,7 +208,6 @@ public:
         MF.setAlignment(Align(16));
         return false; // Return true if the function was modified
     }
-
 };
 } // end anonymous namespace
 
@@ -142,6 +215,6 @@ char RISCVLIWBundling::ID = 0;
 
 INITIALIZE_PASS(RISCVLIWBundling, "riscv-vliw-bundle", "RISC-V VLIW Bundling", false, false)
 
-FunctionPass *llvm::createRISCVLIWBundlingPass(size_t maxBundleSize) {
-  return new RISCVLIWBundling(maxBundleSize);
+FunctionPass *llvm::createRISCVLIWBundlingPass(size_t maxBundleSize, bool fixed) {
+  return new RISCVLIWBundling(maxBundleSize, fixed);
 }

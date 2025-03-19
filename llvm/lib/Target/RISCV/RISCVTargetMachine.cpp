@@ -585,16 +585,15 @@ void RISCVPassConfig::addPreEmitPass2() {
   }));
 
   const MCSubtargetInfo &STI = *TM->getMCSubtargetInfo();
+  bool vliwFixed = STI.hasFeature(RISCV::FeatureStdExtXRVLIWFixed);
   if (STI.hasFeature(RISCV::FeatureStdExtXRVLIWD)) {
-    addPass(createRISCVLIWBundlingPass(2));
+    addPass(createRISCVLIWBundlingPass(2, vliwFixed));
   } else if (STI.hasFeature(RISCV::FeatureStdExtXRVLIWT)) {
-    addPass(createRISCVLIWBundlingPass(3));
+    assert(!vliwFixed);
+    addPass(createRISCVLIWBundlingPass(3, vliwFixed));
   } else if (STI.hasFeature(RISCV::FeatureStdExtXRVLIWQ)) {
-    addPass(createRISCVLIWBundlingPass(4));
-  } else if (STI.hasFeature(RISCV::FeatureStdExtXQSlot)) {
-    addPass(createRISCVLIWBundlingPass(1));
-  }
-}
+    addPass(createRISCVLIWBundlingPass(4, vliwFixed));
+  }}
 
 void RISCVPassConfig::addMachineSSAOptimization() {
   addPass(createRISCVVectorPeepholePass());

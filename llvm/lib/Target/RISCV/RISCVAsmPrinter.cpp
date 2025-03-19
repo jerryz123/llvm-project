@@ -61,7 +61,7 @@ class RISCVAsmPrinter : public AsmPrinter {
 public:
   explicit RISCVAsmPrinter(TargetMachine &TM,
                            std::unique_ptr<MCStreamer> Streamer)
-      : AsmPrinter(TM, std::move(Streamer)), slotIndex(0) {}
+      : AsmPrinter(TM, std::move(Streamer)) {}
 
   StringRef getPassName() const override { return "RISC-V Assembly Printer"; }
 
@@ -111,7 +111,7 @@ public:
   void emitFunctionEntryLabel() override;
   bool emitDirectiveOptionArch();
 
-  unsigned slotIndex;
+  //unsigned slotIndex;
 
 private:
   void emitAttributes(const MCSubtargetInfo &SubtargetInfo);
@@ -366,40 +366,8 @@ void RISCVAsmPrinter::emitInstruction(const MachineInstr *MI) {
   }
 
   bool encodeBundleHead = bundleHead;
-  int slotWidth = 1;
   if (STI->hasFeature(RISCV::FeatureStdExtXRVLIWFixed)) {
-    if (STI->hasFeature(RISCV::FeatureStdExtXRVLIWQ)) {
-      slotWidth = 4;
-    } else if (STI->hasFeature(RISCV::FeatureStdExtXRVLIWD)) {
-      slotWidth = 2;
-    } else {
-      assert(false);
-    }
     encodeBundleHead = false;
-  } else if (STI->hasFeature(RISCV::FeatureStdExtXQSlot)) {
-    slotWidth = 4;
-    encodeBundleHead = false;
-  }
-
-  unsigned opcode = MI->getOpcode();
-  bool tailJAL = slotWidth > 1 &&
-    (opcode == RISCV::JAL || opcode == RISCV::JALR || opcode == RISCV::PseudoCALL);
-
-  if (slotWidth > 1 && !inBundle && !tailJAL) {
-    OutStreamer->emitCodeAlignment(Align(slotWidth*4), &getSubtargetInfo());
-  }
-
-  if (!inBundle && !tailJAL) {
-    slotIndex = 0;
-  }
-
-  if (slotWidth > 1) {
-    if (tailJAL) {
-      while (slotIndex != slotWidth - 1) {
-        emitNops(1);
-        slotIndex++;
-      }
-    }
   }
 
   if (MCSymbol *S = MI->getPreInstrSymbol()) {
@@ -413,8 +381,6 @@ void RISCVAsmPrinter::emitInstruction(const MachineInstr *MI) {
       return;
     }
   }
-
-  slotIndex = (slotIndex + 1) % slotWidth;
 
   RISCV_MC::verifyInstructionPredicates(MI->getOpcode(),
                                         getSubtargetInfo().getFeatureBits());

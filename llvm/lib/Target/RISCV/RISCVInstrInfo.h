@@ -396,6 +396,7 @@ enum RVOPC {
     OPCLOAD,
     OPCSTORE,
     OPCBRANCH,
+    OPCAUIPCJALR, // AUIPC+JALR is special case to do function calls correctly w. linker relaxation
     OPCJALR,
     OPCMISCMEM,
     OPCJAL,

@@ -4348,11 +4348,14 @@ RISCV::RVOPC RISCV::getRVOpcode(const MachineInstr* MI) {
         return RVOPC::OPCBRANCH;
     case RISCV::JALR:
     case RISCV::PseudoRET: // expands to JALR
+    case RISCV::PseudoBRIND:
         return RVOPC::OPCJALR;
+    case RISCV::PseudoCALL: // special case
+    case RISCV::PseudoTAIL:
+        return RVOPC::OPCAUIPCJALR;
     case RISCV::FENCE:
     case RISCV::FENCE_I:
         return RVOPC::OPCMISCMEM;
-    case RISCV::PseudoCALL: // ?? relying on linker relaxation to not generate a AUIPC + JALR
     case RISCV::PseudoBR: // this should always become a JAL
     case RISCV::JAL:
         return RVOPC::OPCJAL;
@@ -4405,6 +4408,7 @@ RISCV::RVOPC RISCV::getRVOpcode(const MachineInstr* MI) {
     case RISCV::SUB:
     case RISCV::XNOR:
     case RISCV::XOR:
+    case RISCV::PseudoAddTPRel:
         return RVOPC::OPCOP;
     case RISCV::DIV:
     case RISCV::DIVU:

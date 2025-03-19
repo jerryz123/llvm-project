@@ -1476,10 +1476,3 @@ def HasStdExtXRVLIWFixed
       AssemblerPredicate<(all_of FeatureStdExtXRVLIWFixed),
                          "'Xrvliwfixed' (RVLIW with fixed-width slots)">;
 
-def FeatureStdExtXQSlot
-    : RISCVExtension<1, 0, "RISCV Compatibility for all VLIW-like extensions">;
-
-def HasStdExtXQSlot
-    : Predicate<"Subtarget->hasFeatureStdExtXQSlot()">,
-      AssemblerPredicate<(all_of FeatureStdExtXQSlot),
-                         "'Xqslot' (RVLIQ quad-slot compatibility)">;
