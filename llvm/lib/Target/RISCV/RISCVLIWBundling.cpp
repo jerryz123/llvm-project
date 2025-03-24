@@ -73,7 +73,7 @@ public:
         RISCV::RVOPC opcode = RISCV::getRVOpcode(MI);
 
         // Check for hazards
-        // PseudoCALL/TAIL operands 
+        // Pseudo CALL/TAIL operands
         for (const auto &O : MI->operands()) {
             for (MachineInstr *PMI : currentBundle) {
                 if (PMI) {
@@ -85,6 +85,18 @@ public:
                 }
             }
         }
+	// X1 is a read operand of PseudoRET
+	if (MI->getOpcode() == RISCV::PseudoRET) {
+	    for (MachineInstr *PMI : currentBundle) {
+                if (PMI) {
+                    for (MachineOperand &PO : PMI->operands()) {
+                        if (PO.isReg() && PO.isDef() && RISCV::X1 == PO.getReg()) {
+                            return false;
+                        }
+                    }
+                }
+            }
+	}
 
         // Special handling for PseudoCALL/TAIL, which gets expanded by the linker
         if (opcode == RISCV::OPCAUIPCJALR) {
