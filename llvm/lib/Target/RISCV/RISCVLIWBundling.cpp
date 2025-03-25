@@ -26,9 +26,10 @@ public:
                 break;
             }
             case 4: {
-                slots.push_back({RISCV::OPCLOAD, RISCV::OPCSTORE, RISCV::OPCSYSTEM, RISCV::OPCMISCMEM});
+                slots.push_back({RISCV::OPCLOAD, RISCV::OPCSTORE, RISCV::OPCSYSTEM, RISCV::OPCMISCMEM,
+			         RISCV::OPCOPDIV, RISCV::OPCOP32DIV});
                 slots.push_back({RISCV::OPCOPMUL, RISCV::OPCOP32MUL});
-                slots.push_back({RISCV::OPCOPDIV, RISCV::OPCOP32DIV, RISCV::OPCAUIPCJALR});
+                slots.push_back({RISCV::OPCAUIPCJALR});
                 slots.push_back({RISCV::OPCBRANCH, RISCV::OPCJALR, RISCV::OPCJAL});
                 break;
             }
@@ -74,13 +75,18 @@ public:
 
         // Check for hazards
         // Pseudo CALL/TAIL operands
+	size_t earliestSlot = 0; // for WARs, if a WAR, don't reorder the younger instruction earlier than here to maintain spike compat
         for (const auto &O : MI->operands()) {
-            for (MachineInstr *PMI : currentBundle) {
+            for (size_t i = 0; i < maxBundleSize; i++) {
+		MachineInstr *PMI = currentBundle[i];
                 if (PMI) {
                     for (MachineOperand &PO : PMI->operands()) {
-                        if (O.isReg() && !O.isImplicit() && PO.isReg() && PO.isDef() && O.getReg() == PO.getReg()) {
-                            return false;
-                        }
+			if (O.isReg() && !O.isImplicit() && PO.isReg() && O.getReg() == PO.getReg()) {
+			    // RAWs
+			    if (PO.isDef() && !O.isDef()) { return false; }
+			    // WARs (for spike compatibility)
+			    if (!PO.isDef() && O.isDef()) { earliestSlot = i; }
+			}
                     }
                 }
             }
@@ -112,7 +118,7 @@ public:
         }
 
 
-        for (size_t i = 0; i < maxBundleSize; i++) {
+        for (size_t i = earliestSlot; i < maxBundleSize; i++) {
             if (currentBundle[i] == nullptr && slots[i].find(opcode) != slots[i].end()) {
                 currentBundle[i] = MI;
                 return true;
