@@ -4349,6 +4349,7 @@ RISCV::RVOPC RISCV::getRVOpcode(const MachineInstr* MI) {
     case RISCV::JALR:
     case RISCV::PseudoRET: // expands to JALR
     case RISCV::PseudoBRIND:
+    case RISCV::PseudoCALLIndirect:
         return RVOPC::OPCJALR;
     case RISCV::PseudoCALL: // special case
     case RISCV::PseudoTAIL:

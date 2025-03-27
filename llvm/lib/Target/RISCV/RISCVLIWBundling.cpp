@@ -26,10 +26,10 @@ public:
                 break;
             }
             case 4: {
-                slots.push_back({RISCV::OPCLOAD, RISCV::OPCSTORE, RISCV::OPCSYSTEM, RISCV::OPCMISCMEM,
+                slots.push_back({RISCV::OPCSYSTEM, RISCV::OPCMISCMEM,
 			         RISCV::OPCOPDIV, RISCV::OPCOP32DIV});
                 slots.push_back({RISCV::OPCOPMUL, RISCV::OPCOP32MUL});
-                slots.push_back({RISCV::OPCAUIPCJALR});
+                slots.push_back({RISCV::OPCAUIPCJALR, RISCV::OPCLOAD, RISCV::OPCSTORE});
                 slots.push_back({RISCV::OPCBRANCH, RISCV::OPCJALR, RISCV::OPCJAL});
                 break;
             }
@@ -67,10 +67,19 @@ public:
 
     std::vector<std::set<RISCV::RVOPC>> slots;
     std::vector<MachineInstr*> currentBundle;
-    //std::vector<MachineOperand*> currentBundleWrites;
     std::vector<std::vector<MachineInstr*>> blockBundles;
 
     bool addToCurrentBundle(MachineInstr *MI) {
+        // InlineASM always needs to be its own bundle or set of bundles
+        if (MI->getOpcode() == TargetOpcode::INLINEASM) {
+            for (MachineInstr* MI : currentBundle) if (MI) return false;
+
+            // Must go to slot0
+            currentBundle[0] = MI;
+            return true;
+        }
+        for (MachineInstr* MI : currentBundle) if (MI && MI->getOpcode() == TargetOpcode::INLINEASM) return false;
+
         RISCV::RVOPC opcode = RISCV::getRVOpcode(MI);
 
         // Check for hazards
@@ -117,7 +126,6 @@ public:
             }
         }
 
-
         for (size_t i = earliestSlot; i < maxBundleSize; i++) {
             if (currentBundle[i] == nullptr && slots[i].find(opcode) != slots[i].end()) {
                 currentBundle[i] = MI;
@@ -156,10 +164,12 @@ public:
                 currentBundle[0] = generateNop(MF);
             }
         } else {
-            for (size_t i = 0; i < maxBundleSize; i++) {
-                // Linker relaxation will fill 2 slots, don't generate the second nop
-                if (currentBundle[i] && RISCV::getRVOpcode(currentBundle[i]) == RISCV::OPCAUIPCJALR) break;
-                if (!currentBundle[i]) currentBundle[i] = generateNop(MF);
+            if (!(currentBundle[0] && currentBundle[0]->getOpcode() == TargetOpcode::INLINEASM)) {
+                for (size_t i = 0; i < maxBundleSize; i++) {
+                    // Linker relaxation will fill 2 slots, don't generate the second nop
+                    if (currentBundle[i] && RISCV::getRVOpcode(currentBundle[i]) == RISCV::OPCAUIPCJALR) break;
+                    if (!currentBundle[i]) currentBundle[i] = generateNop(MF);
+                }
             }
         }
         blockBundles.push_back(currentBundle);
@@ -178,7 +188,7 @@ public:
         for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
             MachineInstr &MI = *I++;
             // Remove CFI_INSTRUCTIONs (these are just used for generating debug info)
-            if (MI.isCFIInstruction()) {
+            if (MI.isCFIInstruction() || MI.isKill() || MI.getOpcode() == TargetOpcode::IMPLICIT_DEF) {
                 MBB.erase(&MI);
             }
         }
