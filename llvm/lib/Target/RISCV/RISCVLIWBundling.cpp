@@ -26,10 +26,10 @@ public:
                 break;
             }
             case 4: {
-                slots.push_back({RISCV::OPCSYSTEM, RISCV::OPCMISCMEM,
+                slots.push_back({RISCV::OPCSYSTEM, RISCV::OPCMISCMEM, RISCV::OPCLOAD, RISCV::OPCSTORE,
 			         RISCV::OPCOPDIV, RISCV::OPCOP32DIV});
                 slots.push_back({RISCV::OPCOPMUL, RISCV::OPCOP32MUL});
-                slots.push_back({RISCV::OPCAUIPCJALR, RISCV::OPCLOAD, RISCV::OPCSTORE});
+                slots.push_back({RISCV::OPCAUIPCJALR});
                 slots.push_back({RISCV::OPCBRANCH, RISCV::OPCJALR, RISCV::OPCJAL});
                 break;
             }
@@ -203,8 +203,8 @@ public:
                 assert(addToCurrentBundle(&MI));
             }
 
-            // No younger instructions can be placed in the bundle with a PseudoCALL/TAIL
-            if (RISCV::getRVOpcode(&MI) == RISCV::OPCAUIPCJALR)
+            // No younger instructions can be placed in the bundle with a PseudoCALL/TAIL or a INLINEASM
+            if (MI.getOpcode() == TargetOpcode::INLINEASM || RISCV::getRVOpcode(&MI) == RISCV::OPCAUIPCJALR)
                 legalizeAndEmitCurrentBundle(*MF);
         }
         legalizeAndEmitCurrentBundle(*MF);
