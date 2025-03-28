@@ -585,16 +585,16 @@ void RISCVPassConfig::addPreEmitPass2() {
   }));
 
   const MCSubtargetInfo &STI = *TM->getMCSubtargetInfo();
-  bool vliwFixed = false;
-  bool vliwSlots = 1;
 
-  if (STI.hasFeature(RISCV::FeatureStdExtXRVLIWFQ)) {
-    vliwFixed = true;
-    vliwSlots = 4;
-  }
-
-  if (vliwSlots > 1) {
-    addPass(createRISCVLIWBundlingPass(vliwSlots, vliwFixed));
+  static std::vector<unsigned> vliwFeatures = {
+    RISCV::FeatureStdExtXRVLIWFQ,
+    RISCV::FeatureStdExtXRVLIWDQ
+  };
+  for (unsigned f : vliwFeatures) {
+    if (STI.hasFeature(f)) {
+      addPass(createRISCVLIWBundlingPass(f));
+        break;
+    };
   }
 }
 
