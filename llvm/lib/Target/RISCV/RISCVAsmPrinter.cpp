@@ -366,7 +366,7 @@ void RISCVAsmPrinter::emitInstruction(const MachineInstr *MI) {
   }
 
   bool encodeBundleHead = bundleHead;
-  if (STI->hasFeature(RISCV::FeatureStdExtXRVLIWFixed)) {
+  if (STI->hasFeature(RISCV::FeatureStdExtXRVLIWFQ)) {
     encodeBundleHead = false;
   }
 

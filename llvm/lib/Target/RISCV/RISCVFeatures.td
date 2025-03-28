@@ -1444,35 +1444,5 @@ def FeatureTaggedGlobals : SubtargetFeature<"tagged-globals",
 
 // RVLIW features
 
-def FeatureStdExtXRVLIWD
-    : RISCVExtension<1, 0, "RISCV VLIW-like Extension with 2-insn slots">;
-
-def HasStdExtXRVLIWD
-    : Predicate<"Subtarget->hasFeatureStdExtXRVLIWD()">,
-      AssemblerPredicate<(all_of FeatureStdExtXRVLIWD),
-                         "'Xrvliwd' (RVLIW with 2-insn slots)">;
-
-def FeatureStdExtXRVLIWT
-    : RISCVExtension<1, 0, "RISCV VLIW-like Extension with 3-insn slots">;
-
-def HasStdExtXRVLIWT
-    : Predicate<"Subtarget->hasFeatureStdExtXRVLIWT()">,
-      AssemblerPredicate<(all_of FeatureStdExtXRVLIWT),
-                         "'Xrvliwt' (RVLIW with 3-insn slots)">;
-
-def FeatureStdExtXRVLIWQ
-    : RISCVExtension<1, 0, "RISCV VLIW-like Extension with 4-insn slots", []>;
-
-def HasStdExtXRVLIWQ
-    : Predicate<"Subtarget->hasFeatureStdExtXRVLIWQ()">,
-      AssemblerPredicate<(all_of FeatureStdExtXRVLIWQ),
-                         "'Xrvliwq' (RVLIW with 4-insn slots)">;
-
-def FeatureStdExtXRVLIWFixed
-    : RISCVExtension<1, 0, "RISCV VLIW-like Extension with fixed slots", []>;
-
-def HasStdExtXRVLIWFixed
-    : Predicate<"Subtarget->hasFeatureStdExtXRVLIWFixed()">,
-      AssemblerPredicate<(all_of FeatureStdExtXRVLIWFixed),
-                         "'Xrvliwfixed' (RVLIW with fixed-width slots)">;
-
+def FeatureStdExtXRVLIWFQ
+    : RISCVExtension<1, 0, "RISCV VLIW-like Extension with 4-insn slots">;

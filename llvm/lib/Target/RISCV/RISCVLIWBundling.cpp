@@ -14,17 +14,9 @@ namespace {
 class RISCVLIWBundling : public MachineFunctionPass {
 public:
     static char ID;
-    RISCVLIWBundling(size_t _maxBundleSize, bool _fixed) : MachineFunctionPass(ID), maxBundleSize(_maxBundleSize), fixed(_fixed) {
+    RISCVLIWBundling(size_t _maxBundleSize, bool _fixed, bool _nops) : MachineFunctionPass(ID), maxBundleSize(_maxBundleSize), fixed(_fixed), injectNops(_nops) {
         if (fixed) {
             switch (maxBundleSize) {
-            case 2: {
-                slots.push_back({
-                        RISCV::OPCLOAD, RISCV::OPCSTORE, RISCV::OPCMISCMEM, RISCV::OPCOPDIV,
-                        RISCV::OPCOPMUL, RISCV::OPCSYSTEM, RISCV::OPCOP32DIV, RISCV::OPCOP32MUL,
-                        RISCV::OPCAUIPCJALR});
-                slots.push_back({RISCV::OPCBRANCH, RISCV::OPCJALR, RISCV::OPCJAL});
-                break;
-            }
             case 4: {
                 slots.push_back({RISCV::OPCSYSTEM, RISCV::OPCMISCMEM, RISCV::OPCLOAD, RISCV::OPCSTORE,
 			         RISCV::OPCOPDIV, RISCV::OPCOP32DIV});
