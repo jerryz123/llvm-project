@@ -49,11 +49,15 @@ public:
             slots[3].insert(RISCV::OPCBRANCH);
             slots[3].insert(RISCV::OPCJAL);
             slots[3].insert(RISCV::OPCJALR);
-
-            counts.push_back(std::make_pair(std::set<RISCV::RVOPC>({RISCV::OPCSYSTEM, RISCV::OPCMISCMEM}), 1));
-            counts.push_back(std::make_pair(std::set<RISCV::RVOPC>({RISCV::OPCLOAD, RISCV::OPCSTORE}), 1));
-            counts.push_back(std::make_pair(std::set<RISCV::RVOPC>({RISCV::OPCOPDIV, RISCV::OPCOP32DIV}), 1));
+            
+            counts.push_back(std::make_pair(std::set<RISCV::RVOPC>({RISCV::OPCSYSTEM, RISCV::OPCMISCMEM,
+                            RISCV::OPCLOAD, RISCV::OPCSTORE,
+                            RISCV::OPCOPDIV, RISCV::OPCOP32DIV
+                        }), 1));
             counts.push_back(std::make_pair(std::set<RISCV::RVOPC>({RISCV::OPCOPMUL, RISCV::OPCOP32MUL}), 1));
+
+
+            
             break;
         }
         default: {
