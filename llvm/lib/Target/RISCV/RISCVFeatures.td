@@ -1447,5 +1447,5 @@ def FeatureTaggedGlobals : SubtargetFeature<"tagged-globals",
 def FeatureStdExtXRVLIWFQ
     : RISCVExtension<1, 0, "RISCV VLIW-like Extension with fixed 4-insn slots">;
 
-def FeatureStdExtXRVLIWDQ
+def FeatureStdExtXRVLIWSQ
     : RISCVExtension<1, 0, "RISCV VLIW-like Extension with dynamic 4-insn slots">;

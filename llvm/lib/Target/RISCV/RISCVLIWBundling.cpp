@@ -35,7 +35,7 @@ public:
             // don't need to initialize counts, the slots are fixed
             break;
         }
-        case RISCV::FeatureStdExtXRVLIWDQ: {
+        case RISCV::FeatureStdExtXRVLIWSQ: {
             maxBundleSize = 4;
             // Only restrict AUIPCJALR to 2nd to last slot, and BR/JMP to last slot,
             // otherwise any insn can go anywhere
@@ -141,7 +141,7 @@ public:
 
         // Special handling for PseudoCALL/TAIL, which gets expanded by the linker
         if (opcode == RISCV::OPCAUIPCJALR) {
-            if (variant == RISCV::FeatureStdExtXRVLIWFQ || variant == RISCV::FeatureStdExtXRVLIWDQ) {
+            if (variant == RISCV::FeatureStdExtXRVLIWFQ || variant == RISCV::FeatureStdExtXRVLIWSQ) {
                 // PseudoCALL/TAIL gets expanded to AUIPC+JALR, so both slots must be clear
                 if (currentBundle[maxBundleSize-2] != nullptr || currentBundle[maxBundleSize-1] != nullptr) {
                     return false;
