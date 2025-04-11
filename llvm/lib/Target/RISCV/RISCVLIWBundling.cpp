@@ -49,34 +49,41 @@ public:
             slots[3].insert(RISCV::OPCBRANCH);
             slots[3].insert(RISCV::OPCJAL);
             slots[3].insert(RISCV::OPCJALR);
-            
+
             counts.push_back(std::make_pair(std::set<RISCV::RVOPC>({RISCV::OPCSYSTEM, RISCV::OPCMISCMEM,
                             RISCV::OPCLOAD, RISCV::OPCSTORE,
                             RISCV::OPCOPDIV, RISCV::OPCOP32DIV
                         }), 1));
             counts.push_back(std::make_pair(std::set<RISCV::RVOPC>({RISCV::OPCOPMUL, RISCV::OPCOP32MUL}), 1));
-
-
-            
             break;
         }
+	case RISCV::FeatureStdExtXRVLIWHQ: {
+	    maxBundleSize = 4;
+	    // First slot is special
+	    // The AUIPC+JALR pair will get expanded by the linker into two insns
+	    slots.push_back({RISCV::OPCLOAD, RISCV::OPCOPIMM, RISCV::OPCOP, RISCV::OPCAUIPCJALR});
+	    // other slots can be anything
+	    for (size_t i = 1; i < maxBundleSize; i++) {
+		slots.push_back({RISCV::OPCLOAD, RISCV::OPCOPIMM, RISCV::OPCOP,
+			RISCV::OPCSTORE, RISCV::OPCBRANCH, RISCV::OPCJALR, RISCV::OPCMISCMEM,
+			RISCV::OPCJAL, RISCV::OPCOPDIV, RISCV::OPCOPMUL, RISCV::OPCSYSTEM,
+			RISCV::OPCAUIPC, RISCV::OPCLUI,
+			RISCV::OPCOPIMM32, RISCV::OPCOP32, RISCV::OPCOP32DIV, RISCV::OPCOP32MUL
+		    });
+	    }
+
+	    counts.push_back(std::make_pair(std::set<RISCV::RVOPC>({RISCV::OPCSYSTEM, RISCV::OPCMISCMEM,
+                            RISCV::OPCLOAD, RISCV::OPCSTORE,
+                            RISCV::OPCOPDIV, RISCV::OPCOP32DIV
+                        }), 1));
+            counts.push_back(std::make_pair(std::set<RISCV::RVOPC>({RISCV::OPCOPMUL, RISCV::OPCOP32MUL}), 1));
+	    break;
+	}
         default: {
             assert(false);
         }
         }
 
-        // // First slot is special
-        // // The AUIPC+JALR pair will get expanded by the linker into two insns
-        // slots.push_back({RISCV::OPCLOAD, RISCV::OPCOPIMM, RISCV::OPCOP, RISCV::OPCAUIPCJALR});
-        // // other slots can be anything
-        // for (size_t i = 1; i < maxBundleSize; i++) {
-        //     slots.push_back({RISCV::OPCLOAD, RISCV::OPCOPIMM, RISCV::OPCOP,
-        //             RISCV::OPCSTORE, RISCV::OPCBRANCH, RISCV::OPCJALR, RISCV::OPCMISCMEM,
-        //             RISCV::OPCJAL, RISCV::OPCOPDIV, RISCV::OPCOPMUL, RISCV::OPCSYSTEM,
-        //             RISCV::OPCAUIPC, RISCV::OPCLUI,
-        //             RISCV::OPCOPIMM32, RISCV::OPCOP32, RISCV::OPCOP32DIV, RISCV::OPCOP32MUL
-        //         });
-        // }
     }
 
     unsigned variant;
@@ -113,6 +120,19 @@ public:
                     reads.push_back(O.getReg());
                 }
             }
+            // This variant changes the emissiom for the bundle header to drop
+            // the pcrel_hi/lo symbols, so any instruction which has a pcrel_hi/lo
+            // operand cannot be the header
+            if (variant == RISCV::FeatureStdExtXRVLIWHQ) {
+                switch (O.getTargetFlags()) {
+                case RISCVII::MO_PCREL_HI:
+                case RISCVII::MO_PCREL_LO:
+                    earliestSlot = 1;
+                    break;
+                default:
+                    break;
+                }
+            }
         }
         // X1 is a read operand of PseudoRET
         if (MI->getOpcode() == RISCV::PseudoRET) {
@@ -147,9 +167,8 @@ public:
                     return false;
                 }
             } else {
-                assert(false);
-                // // PseudoCALL/TAIL goes only in slot0, other slots must be clear
-                // for (MachineInstr* I : currentBundle) if (I != nullptr) return false;
+                // PseudoCALL/TAIL goes only in slot0, other slots must be clear
+		for (MachineInstr* I : currentBundle) if (I) return false;
             }
         }
 
@@ -193,28 +212,28 @@ public:
         for (MachineInstr* MI : currentBundle) if (MI) bundleInsns++;
         if (bundleInsns == 0) return;
 
-        // if (!fixed) {
-        //     if (bundleInsns == 1) {
-        //         // Move the single instruction to the header slot
-        //         for (size_t i = 1; i < maxBundleSize; i++) {
-        //             if (currentBundle[i]) {
-        //                 currentBundle[0] = currentBundle[i];
-        //                 currentBundle[i] = nullptr;
-        //             }
-        //         }
-        //     } else if (bundleInsns > 1 && currentBundle[0] == nullptr) {
-        //         // Inject a nop bundle-header
-        //         currentBundle[0] = generateNop(MF);
-        //     }
-        // } else {
-        if (!(currentBundle[0] && currentBundle[0]->getOpcode() == TargetOpcode::INLINEASM)) {
-            for (size_t i = 0; i < maxBundleSize; i++) {
-                // Linker relaxation will fill 2 slots, don't generate the second nop
-                if (currentBundle[i] && RISCV::getRVOpcode(currentBundle[i]) == RISCV::OPCAUIPCJALR) break;
-                if (!currentBundle[i]) currentBundle[i] = generateNop(MF);
+        if (variant == RISCV::FeatureStdExtXRVLIWHQ) {
+            if (bundleInsns == 1) {
+                // Move the single instruction to the header slot
+                for (size_t i = 1; i < maxBundleSize; i++) {
+                    if (currentBundle[i]) {
+                        currentBundle[0] = currentBundle[i];
+                        currentBundle[i] = nullptr;
+                    }
+                }
+            } else if (bundleInsns > 1 && currentBundle[0] == nullptr) {
+                // Inject a nop bundle-header
+                currentBundle[0] = generateNop(MF);
             }
-        }
-        // }
+        } else {
+	    if (!(currentBundle[0] && currentBundle[0]->getOpcode() == TargetOpcode::INLINEASM)) {
+		for (size_t i = 0; i < maxBundleSize; i++) {
+		    // Linker relaxation will fill 2 slots, don't generate the second nop
+		    if (currentBundle[i] && RISCV::getRVOpcode(currentBundle[i]) == RISCV::OPCAUIPCJALR) break;
+		    if (!currentBundle[i]) currentBundle[i] = generateNop(MF);
+		}
+	    }
+	}
         blockBundles.push_back(currentBundle);
         currentBundle = std::vector<MachineInstr*>(maxBundleSize, nullptr);
         countsSoFar = std::vector<size_t>(counts.size(), 0);
@@ -226,8 +245,10 @@ public:
         // align the start of a bundle
         // To work around odd linker-relaxation behavior (possibly buggy), we manually
         // inject no-ops in assembly emission
-        if (variant == RISCV::FeatureStdExtXRVLIWFQ)
+        if ((variant == RISCV::FeatureStdExtXRVLIWFQ || variant == RISCV::FeatureStdExtXRVLIWSQ) &&
+            !MBB.getParent()->getSubtarget<RISCVSubtarget>().hasStdExtCOrZca()) {
             MBB.setAlignment(Align(maxBundleSize * 4));
+        }
 
         for (auto I = MBB.begin(), E = MBB.end(); I != E; ) {
             MachineInstr &MI = *I++;

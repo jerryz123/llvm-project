@@ -1449,3 +1449,6 @@ def FeatureStdExtXRVLIWFQ
 
 def FeatureStdExtXRVLIWSQ
     : RISCVExtension<1, 0, "RISCV VLIW-like Extension with dynamic 4-insn slots">;
+
+def FeatureStdExtXRVLIWHQ
+    : RISCVExtension<1, 0, "RISCV VLIW-like Extension with hybrid 4-insn slots">;

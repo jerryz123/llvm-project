@@ -303,7 +303,7 @@ void RISCVAsmPrinter::emitNTLHint(const MachineInstr *MI) {
 }
 
 bool RISCVAsmPrinter::emitBundleHeader(const MachineInstr *MI, int size) {
-  assert(size >= 1 && size < 4);
+  assert(size > 1 && size <= 4);
   MCInst MCI, HI;
   if (lowerToMCInst(MI, MCI)) assert(false);
 
@@ -319,23 +319,23 @@ bool RISCVAsmPrinter::emitBundleHeader(const MachineInstr *MI, int size) {
   switch (RISCV::getRVOpcode(MI)) {
   case RISCV::RVOPC::OPCLOAD:
       switch (size) {
-      case 1: OpcodeNew = 0b11010; break;
-      case 2: OpcodeNew = 0b11110; break;
-      case 3: OpcodeNew = 0b11111; break;
+      case 2: OpcodeNew = 0b11010; break;
+      case 3: OpcodeNew = 0b11110; break;
+      case 4: OpcodeNew = 0b11111; break;
       }
       break;
   case RISCV::RVOPC::OPCOPIMM:
       switch (size) {
-      case 1: OpcodeNew = 0b00111; break;
-      case 2: OpcodeNew = 0b01111; break;
-      case 3: OpcodeNew = 0b10111; break;
+      case 2: OpcodeNew = 0b00111; break;
+      case 3: OpcodeNew = 0b01111; break;
+      case 4: OpcodeNew = 0b10111; break;
       }
       break;
   case RISCV::RVOPC::OPCOP:
       switch (size) {
-      case 1: OpcodeNew = 0b00010; break;
-      case 2: OpcodeNew = 0b01010; break;
-      case 3: OpcodeNew = 0b10110; break;
+      case 2: OpcodeNew = 0b00010; break;
+      case 3: OpcodeNew = 0b01010; break;
+      case 4: OpcodeNew = 0b10110; break;
       }
       break;
   default:
@@ -358,6 +358,7 @@ void RISCVAsmPrinter::emitInstruction(const MachineInstr *MI) {
   if (bundleHead) {
     auto IIT = MI->getIterator();
     IIT++;
+    bundleSize = 1;
     const MachineBasicBlock *MBB = MI->getParent();
     while (IIT != MBB->instr_end() && IIT->isBundledWithPred()) {
       IIT++;

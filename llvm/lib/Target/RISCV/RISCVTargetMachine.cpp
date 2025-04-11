@@ -588,12 +588,13 @@ void RISCVPassConfig::addPreEmitPass2() {
 
   static std::vector<unsigned> vliwFeatures = {
     RISCV::FeatureStdExtXRVLIWFQ,
-    RISCV::FeatureStdExtXRVLIWSQ
+    RISCV::FeatureStdExtXRVLIWSQ,
+    RISCV::FeatureStdExtXRVLIWHQ,
   };
   for (unsigned f : vliwFeatures) {
     if (STI.hasFeature(f)) {
       addPass(createRISCVLIWBundlingPass(f));
-        break;
+      break;
     };
   }
 }
