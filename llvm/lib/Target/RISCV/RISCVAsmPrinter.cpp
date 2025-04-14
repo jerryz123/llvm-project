@@ -342,7 +342,7 @@ bool RISCVAsmPrinter::emitBundleHeader(const MachineInstr *MI, int size) {
       errs() << *MI;
       MI->emitGenericError("Illegal insn for RVLIW bundleHead");
   }
-
+  assert(Encoding & 0b11 == 0b11);
   Encoding = ((Encoding >> 7) << 7) | (OpcodeNew << 2) | 0b11;
 
   OutStreamer->emitValue(MCConstantExpr::create(Encoding, OutContext), 4);

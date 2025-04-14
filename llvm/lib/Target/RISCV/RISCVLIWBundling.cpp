@@ -95,7 +95,7 @@ public:
     std::vector<std::vector<MachineInstr*>> blockBundles;
 
     bool addToCurrentBundle(MachineInstr *MI) {
-        // InlineASM always needs to be its own bundle or set of bundles
+        // InlineASM always needs to be its own bundle
         if (MI->getOpcode() == TargetOpcode::INLINEASM) {
             for (MachineInstr* MI : currentBundle) if (MI) return false;
 
@@ -103,9 +103,18 @@ public:
             currentBundle[0] = MI;
             return true;
         }
-        for (MachineInstr* MI : currentBundle) if (MI && MI->getOpcode() == TargetOpcode::INLINEASM) return false;
 
         RISCV::RVOPC opcode = RISCV::getRVOpcode(MI);
+	// fences must be in their own bundle
+	if (opcode == RISCV::RVOPC::OPCMISCMEM) {
+	  for (MachineInstr* MI : currentBundle) if (MI) return false;
+	}
+
+	for (MachineInstr* MI : currentBundle) {
+	  if (MI && (MI->getOpcode() == TargetOpcode::INLINEASM ||
+		     RISCV::getRVOpcode(MI) == RISCV::RVOPC::OPCMISCMEM))
+	    return false;
+	}
 
         // Check for hazards
         // Pseudo CALL/TAIL operands
@@ -121,10 +130,13 @@ public:
                 }
             }
             // This variant changes the emissiom for the bundle header to drop
-            // the pcrel_hi/lo symbols, so any instruction which has a pcrel_hi/lo
+            // the tprel/pcrel hi/lo symbols, so any instruction which has a tprel/pcrel hi/lo
             // operand cannot be the header
             if (variant == RISCV::FeatureStdExtXRVLIWHQ) {
                 switch (O.getTargetFlags()) {
+		case RISCVII::MO_TPREL_LO:
+		case RISCVII::MO_TPREL_HI:
+		case RISCVII::MO_TPREL_ADD:
                 case RISCVII::MO_PCREL_HI:
                 case RISCVII::MO_PCREL_LO:
                     earliestSlot = 1;
