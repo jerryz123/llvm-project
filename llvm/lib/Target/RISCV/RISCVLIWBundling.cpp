@@ -111,9 +111,15 @@ public:
 	}
 
 	for (MachineInstr* MI : currentBundle) {
-	  if (MI && (MI->getOpcode() == TargetOpcode::INLINEASM ||
-		     RISCV::getRVOpcode(MI) == RISCV::RVOPC::OPCMISCMEM))
-	    return false;
+	  if (MI) {
+	    RISCV::RVOPC po = RISCV::getRVOpcode(MI);
+	    if (MI->getOpcode() == TargetOpcode::INLINEASM ||
+		po == RISCV::RVOPC::OPCMISCMEM ||
+		po == RISCV::RVOPC::OPCBRANCH ||
+		po == RISCV::RVOPC::OPCJALR ||
+		po == RISCV::RVOPC::OPCAUIPCJALR)
+	      return false;
+	  }
 	}
 
         // Check for hazards
